@@ -1,0 +1,46 @@
+pkgname=('python-pgpdump' 'python2-pgpdump')
+pkgver=1.5
+pkgrel=1
+pkgdesc="Python library for parsing PGP packets"
+arch=('any')
+url="https://pypi.python.org/pypi/pgpdump/"
+license=('BSD')
+makedepends=('python-setuptools' 'python2-setuptools' 'python-markupsafe' 'python2-markupsafe')
+source=("https://pypi.python.org/packages/source/p/pgpdump/pgpdump-$pkgver.tar.gz")
+sha256sums=('1c4700857bf7ba735b08cfe4101aa3a4f5fd839657af249c17b2697c20829668')
+# With the browser, go here: https://pypi.python.org/pypi/pgpdump
+
+build() {
+  cd "$srcdir"
+
+  rm -rf python{2,3}-build
+  for builddir in python{2,3}-build; do
+    cp -r pgpdump-$pkgver $builddir
+    pushd $builddir
+    ${builddir%-build} setup.py build
+    popd
+  done
+}
+
+package_python-pgpdump() {
+  depends=('python-setuptools' 'python-markupsafe')
+
+  cd "$srcdir/python3-build"
+
+  python3 setup.py install --root="$pkgdir" -O1
+
+  install -Dm644 COPYRIGHT "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+package_python2-pgpdump() {
+  depends=('python2-setuptools' 'python2-markupsafe')
+
+  cd "$srcdir/python2-build"
+
+  python2 setup.py install --root="$pkgdir" -O1
+
+  install -Dm644 COPYRIGHT "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+# vim:set ts=2 sw=2 et:
+
