@@ -1,0 +1,46 @@
+maintainer="http://indiecomputing.com/"
+url="https://github.com/kartikprabhu/mf2py"
+pkgname=$(basename $(pwd))
+pkgver=0.1
+pkgrel=1
+pkgdesc='Microformats 2 parser in Python'
+arch=('any')
+license=("custom:${pkgname}")
+depends=('python')
+makedepends=('python-pip')
+_commit='0d378f8258c16d4ac72a4cae7643ec96aaa86a10'
+source=("git+${url}#commit=${_commit}")
+releasepage=("${url}/commits/master")
+depends=(
+    'python'
+    'python-beautifulsoup4'
+)
+makedepends=(
+    'python-mock'
+    'python-nose'
+    'python-pip'
+    'python-requests'
+)
+options=('!strip')
+sha512sums=('SKIP')
+
+build() (
+    cd mf2py
+    python setup.py build
+)
+
+# check() (
+# Not currently working according to kartikprabhu
+#     cd mf2py
+#     nosetests
+# )
+
+package() (
+    cd mf2py
+
+    python setup.py install --root=${pkgdir} --optimize=1
+
+    install -m755 -D ${startdir}/mf2dump.py ${pkgdir}/usr/bin/mf2dump
+
+    install -m644 -D LICENSE -t ${pkgdir}/usr/share/licenses/${pkgname}/
+)
