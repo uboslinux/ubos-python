@@ -2,11 +2,10 @@ maintainer="http://indiecomputing.com/"
 url="https://github.com/kartikprabhu/mf2py"
 pkgname=$(basename $(pwd))
 pkgver=0.1
-pkgrel=1
+pkgrel=2
 pkgdesc='Microformats 2 parser in Python'
 arch=('any')
 license=("custom:${pkgname}")
-depends=('python')
 makedepends=('python-pip')
 _commit='0d378f8258c16d4ac72a4cae7643ec96aaa86a10'
 source=("git+${url}#commit=${_commit}")
@@ -14,12 +13,12 @@ releasepage=("${url}/commits/master")
 depends=(
     'python'
     'python-beautifulsoup4'
+    'python-requests'
 )
 makedepends=(
     'python-mock'
     'python-nose'
     'python-pip'
-    'python-requests'
 )
 options=('!strip')
 sha512sums=('SKIP')
