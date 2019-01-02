@@ -1,15 +1,14 @@
 maintainer="http://indiecomputing.com/"
-url="https://github.com/kartikprabhu/mf2py"
+url="https://github.com/microformats/mf2py"
 pkgname=$(basename $(pwd))
-pkgver=0.1
-pkgrel=2
+pkgver=1.1.2
+pkgrel=1
 pkgdesc='Microformats 2 parser in Python'
 arch=('any')
 license=("custom:${pkgname}")
 makedepends=('python-pip')
-_commit='0d378f8258c16d4ac72a4cae7643ec96aaa86a10'
-source=("git+${url}#commit=${_commit}")
-releasepage=("${url}/commits/master")
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/microformats/mf2py/archive/${pkgver}.tar.gz")
+releasepage=("${url}/releases")
 depends=(
     'python'
     'python-beautifulsoup4'
@@ -21,10 +20,10 @@ makedepends=(
     'python-pip'
 )
 options=('!strip')
-sha512sums=('SKIP')
+sha512sums=('36375f8e9751cff35d26f813235a42dcd2e52629600d8720b4c430d64eded53f001e662835c3480537e74a4246a2352b8be60726cc4946ca2ef905b418c3a76a')
 
 build() (
-    cd mf2py
+    cd mf2py-${pkgver}
     python setup.py build
 )
 
@@ -35,7 +34,7 @@ build() (
 # )
 
 package() (
-    cd mf2py
+    cd mf2py-${pkgver}
 
     python setup.py install --root=${pkgdir} --optimize=1
 
