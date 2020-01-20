@@ -1,0 +1,20 @@
+developer="https://pagekite.org/"
+maintainer="http://indiecomputing.com/"
+pkgname=$(basename $(pwd))
+pkgver=2.1.0
+pkgrel=1
+pkgdesc='Modified socks.py which supports chained proxies'
+arch=('any')
+url='http://pagekite.org'
+license=("custom:${pkgname}")
+depends=('python' 'python-setuptools')
+source=(
+    "${pkgname}-${pkgver}.tar.gz::https://github.com/pagekite/PySocksipyChain/archive/v${pkgver}.tar.gz")
+releasepage=('https://github.com/pagekite/PySocksipyChain/releases')
+sha512sums=('f1f50d7b42da256862688041c296e55ba3db88b29fb1a23416843fe96d7b6545fe7c9cbfd61f3b5e5a1047c767f240657095f55f73aafce5e360ce0ec41cd608')
+
+package() {
+    cd "${srcdir}/PySocksipyChain-${pkgver}"
+    python2 setup.py install --root="${pkgdir}/" --optimize=1
+    install -D -m0644 LICENSE ${pkgdir}/usr/share/licenses/${pkgname}
+}
