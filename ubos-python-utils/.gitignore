@@ -1,0 +1,5 @@
+ubos-python-utils-*-any.pkg*
+*.egg-info
+*.pyc
+build/
+__pycache__/
