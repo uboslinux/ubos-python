@@ -8,9 +8,16 @@ pkgdesc='UBOS Python utilities'
 arch=('any')
 url=${developer}
 license=('AGPL')
-depends=('python')
+depends=(
+    'python'
+    'python-systemd'
+)
 
 package() {
+# Conf files
+    install -m644 -D ${startdir}/etc/ubos/*.conf -t ${pkgdir}/etc/ubos/
+
+# Code
     cd "${startdir}/python"
     python setup.py install --root="${pkgdir}/" --optimize=1
 }

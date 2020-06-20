@@ -14,6 +14,7 @@ import traceback
 import ubos.utils
 
 
+# initialize with something in case there's an error before logging is initialized
 logging.config.dictConfig({
     'version'                  : 1,
     'disable_existing_loggers' : False,
@@ -44,16 +45,41 @@ DEBUG = False
 LOG   = logging.getLogger(sys.argv[0][ sys.argv[0].rfind('/')+1 : ] if sys.argv[0].rfind('/') >= 0 else sys.argv[0])
 
 def initialize(
-        verbosity = 0,
-        debug     = False):
+        moduleName,
+        scriptName  = None,
+        verbosity   = 0,
+        logConfFile = None,
+        debug       = False,
+        confFileDir = '/etc/ubos' ):
     """
     Invoked at the beginning of a script, this initializes logging.
 
+    moduleName: name of the module (e.g. app) that produces this log
+    scriptName: script inside the module that produces this log
+    logConfFile: the log configuration file to use
     verbosity: integer capturing the level of verbosity (0 and higher)
     debug: yes or no: if yes, stop and wait for keyboard input in key locations
+    confFileDir: name of the directory in which to log for log configuration files
     """
     global LOG
     global DEBUG
+
+    if scriptName is None:
+        scriptName = moduleName
+
+    if verbosity > 0:
+        if logConfFile is not None:
+            fatal( 'Specify --verbose or --logConfFile, not both' );
+
+        logConfFile = "%s/log-default-v%d-python.conf" % ( confFileDir, verbosity );
+
+    elif logConfFile is None:
+        logConfFile = "%s/log-default-python.conf" % ( confFileDir );
+
+    if not os.path.exists( logConfFile ):
+        fatal( 'Logging configuration file not found:', logConfFile );
+
+    logging.config.fileConfig( logConfFile );
 
     if verbosity == 1:
         LOG.setLevel('INFO')
@@ -62,6 +88,7 @@ def initialize(
         LOG.setLevel('DEBUG')
 
     DEBUG = debug;
+    LOG   = logging.getLogger( moduleName )
 
 
 def trace(*args):

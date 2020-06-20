@@ -8,7 +8,7 @@
 from setuptools import setup
 import ubos.utils
 
-setup(name='UBOS Utils',
+setup(name='ubos-utils',
       packages=[
           'ubos'
       ],
