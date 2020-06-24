@@ -12,6 +12,12 @@ depends=(
     'python'
     'python-systemd'
 )
+backup=(
+    'etc/ubos/log-default-python.conf'
+    'etc/ubos/log-default-v1-python.conf'
+    'etc/ubos/log-default-v2-python.conf'
+    'etc/ubos/log-system-python.conf'
+)
 
 package() {
 # Conf files

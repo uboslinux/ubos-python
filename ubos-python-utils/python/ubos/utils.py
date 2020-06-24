@@ -58,22 +58,51 @@ def myexec(cmd,stdin=None, captureStdout=False, captureStderr=False):
         return ret.returncode
 
 
-def readJsonFromFile( fileName ):
+def slurpFile( fileName ) :
+    """
+    Slurp the content of a file
+
+    fileName: the name of the file to read
+    return: the content of the file
+    """
+    ubos.logging.trace( 'slurpFile', fileName )
+
+    try :
+        with open(fileName, 'r') as fd:
+            ret = fd.read()
+
+        return ret
+
+    except :
+        ubos.logging.error( 'Cannot read file', fileName );
+        return None
+
+
+def readJsonFromFile( fileName, msg = None ):
     """
     Read and parse JSON from a file. In addition, accept # for comments.
 
     fileName: the JSON file to read
+    msg: if an error occurs, use this error message
     return: the parsed JSON
     """
     ubos.logging.trace( fileName )
 
-    with open(fileName, 'r') as fd:
-        jsonContent = fd.read()
+    try :
+        with open(fileName, 'r') as fd:
+            jsonContent = fd.read()
 
-    jsonContent = re.sub(r'(?<!\\)#.*', '', jsonContent)
-    ret         = json.loads(jsonContent)
-    return ret
+        jsonContent = re.sub(r'(?<!\\)#.*', '', jsonContent)
+        ret         = json.loads(jsonContent)
+        return ret
 
+    except:
+        if msg :
+            ubos.logging.error( msg )
+        else :
+            ubos.logging.error( "JSON parsing error in file: %s" % fileName )
+
+        return None
 
 def writeJsonToFile(fileName, j, mode=None ) :
     """

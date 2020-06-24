@@ -42,7 +42,7 @@ logging.config.dictConfig({
 })
 
 DEBUG = False
-LOG   = logging.getLogger(sys.argv[0][ sys.argv[0].rfind('/')+1 : ] if sys.argv[0].rfind('/') >= 0 else sys.argv[0])
+LOG   = logging.getLogger((sys.argv[0][ sys.argv[0].rfind('/')+1 : ] if sys.argv[0].rfind('/') >= 0 else sys.argv[0]) + "-uninitialized" )
 
 def initialize(
         moduleName,
@@ -81,14 +81,14 @@ def initialize(
 
     logging.config.fileConfig( logConfFile );
 
+    DEBUG = debug;
+    LOG   = logging.getLogger( moduleName )
+
     if verbosity == 1:
         LOG.setLevel('INFO')
 
     elif verbosity >= 2:
         LOG.setLevel('DEBUG')
-
-    DEBUG = debug;
-    LOG   = logging.getLogger( moduleName )
 
 
 def trace(*args):
