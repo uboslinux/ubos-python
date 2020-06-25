@@ -128,6 +128,16 @@ def writeJsonToStdout(j) :
     print(json.dumps(j, indent=4, sort_keys=True))
 
 
+def writeJsonToString(j) :
+    """
+    Write JSON to a string
+
+    j: the JSON object to write
+    return: the string
+    """
+    return json.dumps(j, indent=4, sort_keys=True)
+
+
 def saveFile(fileName, content, mode=None) :
     """
     Save content to a file.
