@@ -104,6 +104,29 @@ def readJsonFromFile( fileName, msg = None ):
 
         return None
 
+
+def readJsonFromString( s, msg = None ) :
+    """
+    Read and parse JSON from String
+
+    string: the JSON string
+    msg: if an error occurs, use this error message
+    return: JSON object
+    """
+
+    try:
+        ret = json.loads(s)
+        return ret
+
+    except:
+        if msg :
+            ubos.logging.error( msg )
+        else :
+            ubos.logging.error( 'JSON parsing error' )
+
+    return None
+
+
 def writeJsonToFile(fileName, j, mode=None ) :
     """
     Write JSON to a file.
