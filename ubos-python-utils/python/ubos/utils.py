@@ -37,11 +37,19 @@ def myexec(cmd,stdin=None, captureStdout=False, captureStderr=False):
     captureStderr: if true, capture the commands stderr and return
     return: if no capture: return code; otherwise tuple
     """
-    if stdin == None:
+    if stdin :
+        try :
+            # make sure we have a bytes-like object
+            stdin = stdin.encode()
+        except:
+            pass
+
+    if stdin is None:
         ubos.logging.debugAndSuspend('myexec:', cmd)
     else:
         ubos.logging.debugAndSuspend('myexec:', cmd, 'with stdin:', stdin)
-    ubos.logging.trace(cmd, 'None' if stdin==None else len(stdin))
+
+    ubos.logging.trace(cmd, 'None' if stdin==None else ( "with stdin of length %d " % len(stdin)))
 
     ret = subprocess.run(
             cmd,
