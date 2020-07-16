@@ -184,6 +184,21 @@ def saveFile(fileName, content, mode=None) :
         os.chmod(fileName, mode)
 
 
+def deleteFile( *files ) :
+    """
+    Delete one or more files.
+
+    files; the files
+    """
+
+    for f in files:
+        try :
+            os.unlink( f )
+
+        except Exception as e:
+            ubos.logging.error( 'Cannot delete file:', e )
+
+
 def time2string(t):
     """
     Format time consistently
