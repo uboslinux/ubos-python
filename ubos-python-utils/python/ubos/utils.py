@@ -208,7 +208,7 @@ def mkdir( filename, mask = -1, uid = -1, gid = -1 ) :
 
     dirPath = Path( filename )
     if dirPath.is_dir() :
-        ubos.logging.warn( 'Directory exists already', filename )
+        ubos.logging.warning( 'Directory exists already', filename )
         return True
 
     if dirPath.exists() :
@@ -228,6 +228,45 @@ def mkdir( filename, mask = -1, uid = -1, gid = -1 ) :
         os.chown( uid, gid, filename )
 
     return ret;
+
+
+def symlink( oldfile, newfile, uid = -1, gid = -1 ) :
+    """
+    Make a symlink
+
+    oldfile: the destination of the symlink
+    newfile: the symlink to be created
+    uid: owner username
+    gid: group username
+    """
+
+    uid = getUid( uid )
+    gid = getGid( gid )
+
+    ubos.logging.trace( 'symlink', oldfile, newfile );
+
+    ret = os.symlink( oldfile, newfile )
+    if ret is None:
+        if uid >= 0 or gid >= 0 :
+            os.lchown( uid, gid, newfile )
+
+    else :
+        ubos.logging.error( 'Failed to symlink', oldfile, newfile )
+
+    return ret
+
+
+def absReadLink( path ) :
+    """
+    Resolve the target of a symbolic link to an absolute path.
+    If this is not a symbolic link, resolve the path to an absolute path.
+
+    path: the path
+    return: the absolute path for path, or its target if path is a symbolic link
+    """
+
+    ret = os.path.realpath( path )
+    return ret
 
 
 def findSubmodules(package) :
