@@ -141,7 +141,8 @@ def myexec(cmd,stdin=None, captureStdout=False, captureStderr=False):
 
 def slurpFile( fileName ) :
     """
-    Slurp the content of a file
+    Slurp the content of a file as a binary, without attempting any
+    conversion to characters
 
     fileName: the name of the file to read
     return: the content of the file
@@ -149,7 +150,7 @@ def slurpFile( fileName ) :
     ubos.logging.trace( 'slurpFile', fileName )
 
     try :
-        with open(fileName, 'r') as fd:
+        with open(fileName, 'rb') as fd:
             ret = fd.read()
 
         return ret
@@ -161,13 +162,13 @@ def slurpFile( fileName ) :
 
 def saveFile(fileName, content, mode=None) :
     """
-    Save content to a file.
+    Save binary content to a file.
 
     fileName: name of the file to write
     content: the content to write
     mode: the file permissions to set; default is: umask
     """
-    with open(fileName, 'w') as fd:
+    with open(fileName, 'wb') as fd:
         fd.write(content)
 
     if mode != None:
