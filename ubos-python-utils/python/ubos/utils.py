@@ -411,3 +411,38 @@ def string2time(s):
     return ret
 
 
+def dictAsColumns( obj, f = None, comp = None ):
+    """
+    Helper method to convert name-value pairs into a string with column format.
+    Optionally, the value can be processed before converted to string
+
+    obj: hash of first column to second column
+    f: optional method to invoke on the second column before printing. Do not print if method returns undef
+    comp: optional comparison method on the keys, for sorting
+    return: string
+    """
+
+    toPrint = dict()
+    indent  = 0
+
+    for name, value in obj.items() :
+        formattedValue = value if ( f is None ) else f( value )
+
+        if formattedValue is not None:
+            toPrint[name] = formattedValue.strip()
+
+            if len( name ) > indent :
+                indent = len( name )
+
+    if comp is None:
+        sortedNames = sorted( obj )
+    else:
+        sortedNames = sorted( obj, key = comp )
+
+    ret = ''
+    for name in sortedNames :
+        formattedValue = toPrint[name].strip()
+
+        ret += ( '%-' + str(indent) + "s - %s\n" ) % ( name, formattedValue )
+
+    return ret
