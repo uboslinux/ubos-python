@@ -196,8 +196,8 @@ def mkdir( filename, mask = -1, uid = -1, gid = -1 ) :
 
     filename: path to the directory
     mask: permissions on the directory
-    uname: owner of the directory
-    gname: group of the directory
+    uid: owner of the directory
+    gid: group of the directory
     return: True if successful
     """
 
@@ -213,14 +213,15 @@ def mkdir( filename, mask = -1, uid = -1, gid = -1 ) :
         return True
 
     if dirPath.exists() :
-        ubos.logging.error( 'Failed to create directory, something is there already:', filename );
+        ubos.logging.error( 'Failed to create directory, something is there already:', filename )
         return False
 
     ubos.logging.trace( 'Creating directory', filename )
 
     ret = os.mkdir( filename )
     if ret :
-        ubos.logging.error( 'Failed to create directory:', filename, ', status:', ret );
+        ubos.logging.error( 'Failed to create directory:', filename, ', status:', ret )
+        return False
 
     if mask >= 0 :
         os.chmod( filename, mask )
@@ -228,7 +229,76 @@ def mkdir( filename, mask = -1, uid = -1, gid = -1 ) :
     if uid >= 0 or gid >= 0 :
         os.chown( uid, gid, filename )
 
-    return ret;
+    return True
+
+
+def mkdirDashP( filename, mask = -1, uid = -1, gid = -1, parentMask = -1, parentUid = -1, parentGid = -1 ) :
+    """
+    Make a directory, and parent directories if needed
+
+    filename: path to the directory
+    mask: permissions on the directory
+    uid: owner of the directory
+    gid: group of the directory
+    parentMask: permissions on the directory
+    parentUid: owner of any created parent directories
+    parentGid: group of any created parent directories
+    return: True if successful
+    """
+
+    uid = getUid( uid )
+    gid = getGid( gid )
+
+    if mask is None :
+        mask = 0o755
+
+    if parentMask is None:
+        parentPask = mask
+
+    dirPath = Path( filename )
+    if dirPath.is_dir() :
+        ubos.logging.warning( 'Directory exists already', filename )
+        return True
+
+    if dirPath.exists() :
+        ubos.logging.error( 'Failed to create directory, something is there already:', filename );
+        return False
+
+    soFar = ''
+    if filename.startswith( '/' ) :
+        soFar = '/'
+
+    for component in filename.split( '/' ) :
+        if not component:
+            next;
+
+        if soFar and not soFar.endswith( '/' ) :
+            soFar += '/'
+
+        soFar += component
+        if not os.path.isdir( soFar ) :
+            ubos.logging.trace( 'Creating directory', soFar )
+
+            ret = os.mkdir( soFar )
+            if ret :
+                ubos.logging.error( 'Failed to create directory:', soFar, ', status:', ret )
+                return False
+
+            if filename == soFar :
+                if mask >= 0:
+                    os.chmod( mask, soFar )
+
+                if uid >= 0 or gid >= 0 :
+                    os.chown( uid, gid, soFar )
+
+            else :
+                if parentMask >= 0:
+                    os.chmod( parentMask, soFar )
+
+                if parentUid >= 0 or parentGid >= 0 :
+                    os.chown( parentUid, parentGid, soFar )
+
+    return True
 
 
 def symlink( oldfile, newfile, uid = -1, gid = -1 ) :
