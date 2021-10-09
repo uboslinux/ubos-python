@@ -16,6 +16,16 @@ import subprocess
 import time
 import ubos.logging
 
+_now = int( time.time() )
+
+def now() :
+    """
+    Obtain the UNIX system time when the script(s) started running
+
+    return: the UNIX system time
+    """
+    return _now
+
 
 def readJsonFromFile( fileName, msg = None ):
     """
