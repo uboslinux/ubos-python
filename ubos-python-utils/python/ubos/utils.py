@@ -13,6 +13,7 @@ import pkgutil
 import pwd
 import re
 import subprocess
+import sys
 import time
 import ubos.logging
 
@@ -134,6 +135,7 @@ def myexec(cmd,stdin=None, captureStdout=False, captureStderr=False):
 
     ubos.logging.trace(cmd, 'None' if stdin==None else ( "with stdin of length %d " % len(stdin)))
 
+    sys.stdout.flush() # to emit things in order
     ret = subprocess.run(
             cmd,
             shell  = True,
