@@ -1,0 +1,10 @@
+#!/usr/bin/python
+#
+# Main p3sub script
+#
+# Copyright (C) Johannes Ernst. All rights reserved. License: see package.
+#
+
+import p3sub
+
+p3sub.run()

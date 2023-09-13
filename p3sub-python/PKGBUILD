@@ -1,0 +1,57 @@
+developer="http://indiecomputing.com/"
+url="http://ubos.net/"
+maintainer=${developer}
+pkgname=$(basename $(pwd))
+pkgver=0.1
+pkgrel=1
+pkgdesc='P3Sub (Push-Pull-Publish-Subscribe) implementation in Python'
+arch=('any')
+url=${developer}
+license=('AGPL')
+depends=(
+    'python'
+    'python-watchdog'
+)
+makedepends=(
+    'python-build'
+    'python-hatchling'
+    'python-installer'
+    'python-wheel'
+    'rsync'
+)
+
+prepare() {
+    cd "${srcdir}"
+    [ -d "${pkgname}-${pkgver}" ] || mkdir "${pkgname}-${pkgver}"
+
+    cd "${pkgname}-${pkgver}"
+    rsync -a --delete ${startdir}/python/ ./
+
+    cat > pyproject.toml <<EOF
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "${pkgname}"
+version = "${pkgver}"
+description = "${pkgdesc}"
+
+[tool.hatch.build.targets.wheel]
+packages = ["p3sub"]
+EOF
+}
+
+build() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    python -m build --wheel --no-isolation
+}
+
+package() {
+# Code
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    python -m installer --destdir="${pkgdir}" dist/*.whl
+
+    install -m0755 -D ${startdir}/bin/* -t ${pkgdir}/usr/bin/
+}
