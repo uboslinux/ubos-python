@@ -13,5 +13,3 @@ P3SUB_REL_PREV      = 'prev'
 P3SUB_REL_SUBSCRIBE   = 'p3sub-subscribe'
 P3SUB_REL_UNSUBSCRIBE = 'p3sub-unsubscribe'
 
-P3SUB_TS_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
-

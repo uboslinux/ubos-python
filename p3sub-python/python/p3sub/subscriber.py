@@ -5,10 +5,10 @@
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from p3sub.defs import *
-from p3sub.utils import linkHeaderPars, decodeRequestPath
-import ubos.logging
-from urllib.parse import urlencode, urlunparse
-from urllib.request import urlopen
+from p3sub.utils import *
+from random import randrange
+from urllib.parse import urlencode, urljoin, urlparse, urlunparse
+from urllib.request import urlopen, Request
 
 class BaseSubscriber :
     """
@@ -17,13 +17,14 @@ class BaseSubscriber :
 
     def __init__( self, listenUri, feeduri, receivedDir, subId ) :
         self.theFeedUri     = feeduri
-        self.theListenPath  = listenUri.path
+        self.theListenUri   = listenUri
         self.theReceivedDir = receivedDir
         self.theSubId       = subId
         self.theUnsubUri    = None # updated every time we receive it
 
         ( self.theWsHost, self.theWsPort ) = listenUri.netloc.split( ':', 2 )
         self.theWsPort      = int( self.theWsPort )
+        self.theWsPath      = listenUri.path
 
 
     def runListen( self ) :
@@ -33,7 +34,7 @@ class BaseSubscriber :
 
         ws = SubscriberWebServer( ( self.theWsHost, self.theWsPort ), self )
 
-        ubos.logging.info( f"Server started http://{ self.theWsHost }:{ self.theWsPort }" )
+        print( f"INFO: Serving P3Sub subscriber endpoint at http://{ self.theWsHost }:{self.theWsPort}{ self.theWsPath } -- ^C to stop" )
 
         try:
             ws.serve_forever()
@@ -41,7 +42,8 @@ class BaseSubscriber :
             pass
 
         ws.server_close()
-        ubos.logging.info( "Server stopped." )
+
+        return 0
 
 
     def putRequestReceived( self, handler ) :
@@ -53,42 +55,41 @@ class BaseSubscriber :
         ( path, query ) = decodeRequestPath( handler.path )
         linkRels = linkHeaderPars( handler.headers )
 
-        if path != thePath :
-            return False
+        if path != self.theWsPath :
+            return f"PUT sent to wrong path: { path } vs { self.theWsPath }"
 
         if P3SUB_PAR_TS not in query :
-            ubos.logging.info( f"No { P3SUB_PAR_TS } in URL query" )
-            return False;
+            return f"No { P3SUB_PAR_TS } in URL query"
 
         ts = stringToTs( query[P3SUB_PAR_TS] )
 
         if P3SUB_PAR_SUBID not in query :
-            ubos.logging.info( f"No { P3SUB_PAR_SUBID } in URL query" )
-            return False;
+            return f"No { P3SUB_PAR_SUBID } in URL query"
 
         if query[P3SUB_PAR_SUBID] != self.theSubId :
-             ubos.logging.info( f"Wrong { P3SUB_PAR_SUBID } in URL query: { query[P3SUB_PAR_SUBID] }  vs { self.theSubId }" )
-             return False; # FIXME
+             return f"Wrong { P3SUB_PAR_SUBID } in URL query: { query[P3SUB_PAR_SUBID] }  vs { self.theSubId }"
 
         if P3SUB_REL_PREV in linkRels :
-            if self.theSenderUri and not linkRels[P3SUB_REL_PREV].startswith( self.theSenderUri ) :
-                ubos.logging.info( f"Wrong { P3SUB_REL_PREV } in Link header: { linkRels[P3SUB_REL_PREV] } vs { self.theSenderUri }" )
-                return False; # FIXME
+            if self.theFeedUri and not linkRels[P3SUB_REL_PREV].startswith( self.theFeedUri ) :
+                return f"Wrong { P3SUB_REL_PREV } in Link header: { linkRels[P3SUB_REL_PREV] } vs { self.theFeedUri }"
+
             # FIXME: currently not checking that the timestamp is valid
 
         if not P3SUB_REL_UNSUBSCRIBE in linkRels :
-            ubos.logging.info( f"No { P3SUB_REL_UNSUBSCRIBE } in message" )
-            return False; # FIXME
+            return f"No { P3SUB_REL_UNSUBSCRIBE } in message"
 
-        self.theUnsubUri = linkRels[ P3SUB_REL_UNSUBSCRIBE ];
+        self.theUnsubUri = relativeToAbsoluteUrl( self.theFeedUri, urlparse( linkRels[P3SUB_REL_UNSUBSCRIBE] ))
 
-        with open( f"{self.theReceivedDir}/{datetime.strftime( ts )}.dat", 'w' ) as writeTo :
-            handler.rfile.write( writeTo )
+        contentLength = int( handler.headers['content-length'] )
 
-        return True
+        with open( f"{self.theReceivedDir}/{ts.strftime( '%Y-%m-%dT%H:%M:%S.%fZ.dat' )}", 'wb' ) as writeTo :
+            buf = handler.rfile.read( contentLength )
+            writeTo.write( buf )
+
+        return None
 
 
-    def generateSubId() :
+    def generateSubId( self ) :
         ret = ''
         values = "ABCDEFGHIJKLMNOPQRSTUVWabcdefghijklmnopqrstuvwxyz0123456789_"
         for i in range(0,38) : # at least 32 char
@@ -111,9 +112,15 @@ class SubscribingSubscriber( BaseSubscriber ):
         """
         Run the subscriber command.
         """
-        if self.runSubscribe() == 0 :
-            self.runListen()
-            self.runUnsubscribe()
+        err = self.runSubscribe()
+
+        if not err :
+            err = self.runListen()
+
+        if not err :
+            err = self.runUnsubscribe()
+
+        return err
 
 
     def runSubscribe( self ) :
@@ -124,59 +131,55 @@ class SubscribingSubscriber( BaseSubscriber ):
         # Determine subscription URI
         feedUriResponse = urlopen( urlunparse( self.theFeedUri ))
         if feedUriResponse.status != 200 :
-            ubos.logging.info( f"Wrong status. Expected 200, was { publisherUriResponse.status }" )
-            return 1
+            return f"Wrong status. Expected 200, was { publisherUriResponse.status }"
 
         feedUriLinkRels = linkHeaderPars( feedUriResponse.headers )
         if P3SUB_REL_SUBSCRIBE not in feedUriLinkRels :
-            ubos.logging.error( f"Not a P3Sub URI, no { P3SUB_REL_SUBSCRIBE } Link header: { urlunparse( self.theFeedUri ) }" )
-            return 1
+            return f"Not a P3Sub URI, no { P3SUB_REL_SUBSCRIBE } Link header: { urlunparse( self.theFeedUri ) }"
 
-        subscribeUri = urlparse( feedUriLinkRels[P3SUB_REL_SUBSCRIBE] )
+        subscribeUri = relativeToAbsoluteUrl( self.theFeedUri, urlparse( feedUriLinkRels[P3SUB_REL_SUBSCRIBE] ))
 
         # Subscribe
         if not self.theSubId :
-            self.theSubId = generateSubId()
+            self.theSubId = self.generateSubId()
 
         data = {
             P3SUB_PAR_SUBID : self.theSubId,
-            P3SUB_PAR_CALLBACK : self.theListenUri
+            P3SUB_PAR_CALLBACK : urlunparse( self.theListenUri )
         }
         if self.theFromTs :
             data[ P3SUB_PAR_TS ] = tsToString( self.theFromTs )
 
-        subscribeUriResponse = urlopen( urlunparse( subscribeUri ), data=bytes( urlencode( data ), 'utf-8' ), method='POST')
+        subscribeUriResponse = urlopen( Request( urlunparse( subscribeUri ), data=bytes( urlencode( data ), 'utf-8' ), method='POST' ))
         if subscribeUriResponse.status != 200 :
-            ubos.logging.error( f"Subscription failed, HTTP status { subscribeUriResponse.status }" )
-            return 1
+            return f"Subscription failed, HTTP status { subscribeUriResponse.status }"
 
         subscribeUriLinkRels = linkHeaderPars( subscribeUriResponse.headers )
         if P3SUB_REL_UNSUBSCRIBE in subscribeUriLinkRels :
-            self.theUnsubUri = linkRels[ P3SUB_REL_UNSUBSCRIBE ];
-
+            self.theUnsubUri = relativeToAbsoluteUrl( self.theFeedUri, urlparse( subscribeUriLinkRels[P3SUB_REL_UNSUBSCRIBE] ))
 
         else :
-            ubos.logging.info( 'No unsubscribe link in subscription response' )
+            return 'No unsubscribe link in subscription response'
 
+        return None
 
 
     def runUnsubscribe( self ) :
         """
         Cancel the subscription with the publisher
         """
+
         if not self.theUnsubUri :
-            ubos.logging.info( 'Cannot unsubscribe, have no unsubscribe URI' )
-            return 1
+            return 'Cannot unsubscribe, have no unsubscribe URI'
 
         data = {
             P3SUB_PAR_SUBID : self.theSubId,
         }
-
-        unsubscribeUriResponse = urlopen( urlunparse( self.theUnsubUri ), data=bytes( urlencode( data )), method='POST' )
+        unsubscribeUriResponse = urlopen( Request( urlunparse( self.theUnsubUri ), data=bytes( urlencode( data ), 'utf-8' ), method='POST' ))
         if unsubscribeUriResponse.status != 200 :
-            ubos.logging.error( f"Unsubscription failed, HTTP status { unsubscribeUriResponse.status }" )
-            return 1
+            return f"Unsubscription failed, HTTP status { unsubscribeUriResponse.status }"
 
+        return None
 
 
 class PassiveSubscriber( BaseSubscriber ) :
@@ -191,9 +194,7 @@ class PassiveSubscriber( BaseSubscriber ) :
         """
         Run the subscriber command.
         """
-        self.runListen()
-
-
+        return self.runListen()
 
 
 class SubscriberWebServer( HTTPServer ) :
@@ -212,22 +213,20 @@ class SubscriberWebServer( HTTPServer ) :
         return self.theSubscriber.putRequestReceived( handler )
 
 
-
 class SubscriberPutRequestHandler( BaseHTTPRequestHandler ) :
 
     def do_PUT( self ):
-        if self.server.putRequestReceived( self ) :
-            self.responseAccepted();
+        self.complete( self.server.putRequestReceived( self ))
+
+
+    def complete( self, err ) :
+        if err :
+            self.send_response( 400 )
+            self.send_header( "Content-type", "text/plain" )
+            self.end_headers()
+            self.wfile.write( bytes( f"ERROR: Cannot serve this request.\n{ err }\n", "utf-8" ))
         else :
-            self.responseRejected()
-
-
-    def responseRejected( self ) :
-        return super().do_PUT()
-
-
-    def responseAccepted( self ) :
-        self.send_response( 200 )
-        self.send_header( "Content-type", "text/plain" )
-        self.end_headers()
-        self.wfile.write( bytes( "OK", "utf-8" ))
+            self.send_response( 200 )
+            self.send_header( "Content-type", "text/plain" )
+            self.end_headers()
+            self.wfile.write( bytes( "OK", "utf-8" ))

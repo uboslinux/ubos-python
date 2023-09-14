@@ -10,8 +10,9 @@ from os import listdir
 from os.path import isfile, getmtime
 from p3sub.defs import *
 from p3sub.utils import *
-import ubos.logging
-from urllib.parse import urlparse
+from threading import Event, Lock, Thread
+from urllib.parse import urlparse, urlunparse
+from urllib.request import urlopen, Request
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -19,7 +20,6 @@ from watchdog.observers import Observer
 class Publisher :
     def __init__( self, listenUri, feedDirectory ) :
         self.theFeedDirectory = PublisherFeedDirectory( feedDirectory )
-        self.theOutQueue      = PublisherOutQueue()
 
         ( self.theWsHost, self.theWsPort ) = listenUri.netloc.split( ':', 2 )
         self.theWsPort          = int( self.theWsPort )
@@ -28,30 +28,38 @@ class Publisher :
         self.theUnsubscribePath = self.theFeedPath + '/unsub'
         self.theSubscriptions   = {} # subId -> { uri, lastTsEnqueued }
 
+        self.theFeedAndSubscriptionsLock = Lock() # avoid concurrent modifications
+
 
     def run( self ) :
         """
         Run the publisher command.
         """
 
-        # observe the feed directory
-        observer = Observer()
-        observer.schedule( ObserverEventHandler( self.theFeedDirectory ), self.theFeedDirectory.getDirectory(), recursive=False)
-        observer.start()
+        # thread that sends messages out
+        self.theSender = PublisherSender( self )
+        self.theSender.start()
 
         # run a web server
         ws = PublisherWebServer( ( self.theWsHost, self.theWsPort ), self )
 
-        ubos.logging.info( f"Server started http://{ self.theWsHost }:{ self.theWsPort }" )
+        # observe the feed directory
+        observer = Observer()
+        observer.schedule( ObserverEventHandler( self.theFeedDirectory, self ), self.theFeedDirectory.getDirectory(), recursive=False)
+        observer.start()
+
+        print( f"INFO: Serving P3Sub feed at http://{ self.theWsHost }:{self.theWsPort}{ self.theFeedPath } -- ^C to stop" )
 
         try:
             ws.serve_forever()
         except KeyboardInterrupt:
             pass
 
-        ws.server_close()
         observer.stop()
+        self.theSender.stop()
+        ws.server_close()
         observer.join()
+        self.theSender.join()
 
 
     def feedRequestReceived( self, handler ) :
@@ -67,10 +75,8 @@ class Publisher :
             elWithBeforeAfter = self.theFeedDirectory.currentElementWithBeforeAfter()
 
         if elWithBeforeAfter is None:
-            handler.send_response( 404 )
-            handler.send_header( "Content-type", "text/plain" )
-            handler.end_headers()
-            handler.wfile.write( bytes( "No such element.\n", "utf-8" ))
+            return "No such element.\n"
+
         else :
             handler.send_response( 200 )
             handler.send_header( "Content-type", "text/plain" )
@@ -109,7 +115,7 @@ class Publisher :
             callback = callback[0]
         callbackUri = urlparse( callback )
         if not callbackUri.scheme:
-            return f'Not a valid callback URI: { callback }'
+            return f'Not a valid callback URI: { urlunparse( callback ) }'
 
         if P3SUB_PAR_TS in postData:
             fromTs = postData[P3SUB_PAR_TS]
@@ -119,18 +125,13 @@ class Publisher :
                 fromTs = fromTs[0]
             fromTs = stringToTs( fromTs )
         else :
-            fromTs = datetime.today()
+            fromTs = datetime.now( timezone.utc )
 
+        self.theFeedAndSubscriptionsLock.acquire()
         self.theSubscriptions[ subId ] = PublisherSubscription( callbackUri, fromTs )
+        self.theFeedAndSubscriptionsLock.release()
 
-        self.logSubscriptions()
-
-        toQueue = self.theFeedDirectory.elementsAfterWithBefore( fromTs )
-        if toQueue[1] :
-            previous = toQueue[0]
-            for data in toQueue[1] :
-                self.theOutQueue.enqueueToSend( callback, previous, data )
-                previous = data
+        self.theSender.triggerPotentialSend()
 
         handler.send_response( 200 )
         handler.send_header( "Content-type", "text/plain" )
@@ -143,7 +144,6 @@ class Publisher :
 
     def unsubscribeRequestReceived( self, handler ) :
         postData = formFields( handler )
-
         if P3SUB_PAR_SUBID not in postData :
             return f'No { P3SUB_PAR_SUBID } in POSTed data for unsubscribe request'
         subId = postData[P3SUB_PAR_SUBID]
@@ -153,9 +153,9 @@ class Publisher :
             subId = subId[0]
 
         if subId in self.theSubscriptions :
+            self.theFeedAndSubscriptionsLock.acquire()
             del self.theSubscriptions[ subId ]
-
-            self.logSubscriptions()
+            self.theFeedAndSubscriptionsLock.release()
 
             handler.send_response( 200 )
             handler.send_header( "Content-type", "text/plain" )
@@ -188,11 +188,63 @@ class Publisher :
         return ret
 
 
-    def logSubscriptions( self ) :
-        print( f"Subscriptions now: { len( self.theSubscriptions ) }" )
-        for sId in self.theSubscriptions :
-            subscription = self.theSubscriptions[sId]
-            print( f'    { sId }: { subscription.callbackUri } (last success: { subscription.lastSuccessfulTs })' )
+    def processQueue( self ) :
+        self.theFeedAndSubscriptionsLock.acquire()
+
+        updatedSubscriptions = {}
+        for subId in self.theSubscriptions :
+            subData = self.theSubscriptions[ subId ]
+
+            ( previous, toSends ) = self.theFeedDirectory.elementsAfterWithBefore( subData.lastSuccessfulTs )
+            uri                   = subData.callbackUri
+
+            if toSends :
+                for i in range( 0, len( toSends )) :
+                    toSend = toSends[i]
+
+                    if self.sendOne( subId, uri, previous.mtime, toSend ) == 0 :
+                        updatedSubscriptions[ subId ] = PublisherSubscription( uri, toSend.mtime )
+                        previous = toSend
+                    else :
+                        print( f'INFO: Cannot reach {uri}, skipping this subscriber this round' )
+                        break
+
+        for subId in updatedSubscriptions :
+            subData = updatedSubscriptions[ subId ]
+            self.theSubscriptions[ subId ] = subData
+
+        self.theFeedAndSubscriptionsLock.release()
+
+
+    def sendOne( self, subId, uri, before, current ) :
+
+        buf = None
+        with open( current.name, 'rb' ) as f:
+            buf = f.read()
+
+        if buf is None:
+            print( f"ERROR: could not read file { current.name }" )
+            return 1
+
+        # Need to pack into one line, API can't do better
+        linkHeader = f'<{ self.theUnsubscribePath }>; rel="{ P3SUB_REL_UNSUBSCRIBE }"'
+        if before :
+            linkHeader += f', <{ self.theFeedPath }?{ P3SUB_PAR_TS }={ tsToString( before ) }>; rel="{ P3SUB_REL_PREV }"'
+
+        headers = {
+            'content-type'   : 'application/octet-stream',
+            'content-length' : len( buf ),
+            'link'           : linkHeader
+        }
+        uriString = urlunparse( uri )
+        uriString += f'?{ P3SUB_PAR_TS }={ tsToString( current.mtime ) }'
+        uriString += f'&{ P3SUB_PAR_SUBID }={ subId }'
+
+        response = urlopen( Request( uriString, headers=headers, data=buf, method='PUT' ) )
+        if response.status == 200 :
+            return 0
+        else :
+            return 1
 
 
 class PublisherSubscription( namedtuple( 'PublisherSubscription', [ 'callbackUri', 'lastSuccessfulTs' ] )) :
@@ -234,6 +286,7 @@ class PublisherRequestHandler( BaseHTTPRequestHandler ) :
             self.send_header( "Content-type", "text/plain" )
             self.end_headers()
             self.wfile.write( bytes( f"ERROR: Cannot serve this request.\n{ err }\n", "utf-8" ))
+
 
 
 class PublisherFeedDirectory :
@@ -308,10 +361,6 @@ class PublisherFeedDirectory :
             elementsInSequence = sorted( elementsInSequence, key = lambda e : e.mtime )
             self.theElementsInSequence = elementsInSequence
 
-            print( "Updated list of feed data elements:" )
-            for el in self.theElementsInSequence :
-                print( f"    name = { el.name }, ts = { tsToString( el.mtime ) }" )
-
         return self.theElementsInSequence
 
 
@@ -325,16 +374,43 @@ class PublisherFeedDirectoryElement( namedtuple( 'PublisherFeedDirectoryElement'
 
 
 class ObserverEventHandler( FileSystemEventHandler ) :
-    def __init__( self, feedDirectory ) :
+    def __init__( self, feedDirectory, publisher ) :
         super().__init__()
         self.theFeedDirectory = feedDirectory
+        self.thePublisher     = publisher
 
 
     def on_any_event( self, event ) :
         # We take the easy way out
+        self.thePublisher.theFeedAndSubscriptionsLock.acquire()
         self.theFeedDirectory.purgeElementsInSequence()
+        self.thePublisher.theFeedAndSubscriptionsLock.release()
+
+        self.thePublisher.theSender.triggerPotentialSend()
 
 
-class PublisherOutQueue :
-    def enqueueToSend( self, uri, previous, data ) :
-        print( f"XXX About the send { data } with previous { previous } to { uri }." )
+class PublisherSender( Thread ) :
+    def __init__( self, publisher ) :
+        super().__init__()
+
+        self.thePublisher = publisher
+        self.theEvent     = Event()
+        self.theActive    = False
+
+
+    def triggerPotentialSend( self ) :
+        self.theEvent.set()
+
+
+    def run( self ) :
+        self.theActive = True
+        while self.theActive :
+            self.theEvent.wait()
+            self.thePublisher.processQueue()
+            self.theEvent.clear()
+
+
+    def stop( self ) :
+        self.theActive = False
+        self.theEvent.set()
+

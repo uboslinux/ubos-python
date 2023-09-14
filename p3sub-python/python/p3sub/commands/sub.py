@@ -35,7 +35,9 @@ def run( args, remainder ) :
     else :
         sub = SubscribingSubscriber( args.listen, args.received_directory, args.feeduri, args.diff, args.from_ts )
 
-    sub.run()
+    err = sub.run()
+    if err :
+        print( f"ERROR: {err}" )
 
 
 def addSubParser( parentParser, cmdName ) :
@@ -80,4 +82,4 @@ def validSubId( s ) :
 
 
 def validTs( s ) :
-    return stringToTs( s, P3SUB_TS_FORMAT )
+    return stringToTs( s )
