@@ -2,8 +2,8 @@ developer="http://indiecomputing.com/"
 url="http://ubos.net/"
 maintainer=${developer}
 pkgname=$(basename $(pwd))
-pkgver=$(cat PKGVER)
-pkgrel=3
+pkgver=0.9
+pkgrel=1
 pkgdesc='UBOS Python utilities'
 arch=('any')
 url=${developer}
@@ -13,7 +13,11 @@ depends=(
     'python-systemd'
 )
 makedepends=(
-    'python-setuptools'
+    'python-build'
+    'python-hatchling'
+    'python-installer'
+    'python-wheel'
+    'rsync'
 )
 backup=(
     'etc/ubos/log-default-python.conf'
@@ -22,12 +26,36 @@ backup=(
     'etc/ubos/log-system-python.conf'
 )
 
+prepare() {
+    cd "${srcdir}"
+    [ -d "${pkgname}-${pkgver}" ] || mkdir "${pkgname}-${pkgver}"
+
+    cd "${pkgname}-${pkgver}"
+    rsync -a --delete ${startdir}/python/ ./
+
+    cat > pyproject.toml <<EOF
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "${pkgname}"
+version = "${pkgver}"
+description = "${pkgdesc}"
+EOF
+}
+
+build() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    python -m build --wheel --no-isolation
+}
+
 package() {
 # Conf files
     install -m644 -D ${startdir}/etc/ubos/*.conf -t ${pkgdir}/etc/ubos/
 
 # Code
-    cd "${startdir}/python"
-    python setup.py install --root="${pkgdir}/" --optimize=1
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    python -m installer --destdir="${pkgdir}" dist/*.whl
 }
-
