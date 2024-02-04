@@ -2,7 +2,7 @@ developer="http://indiecomputing.com/"
 url="http://ubos.net/"
 maintainer=${developer}
 pkgname=$(basename $(pwd))
-pkgver=0.10
+pkgver=0.11
 pkgrel=1
 pkgdesc='UBOS Python utilities'
 arch=('any')
@@ -42,6 +42,11 @@ build-backend = "hatchling.build"
 name = "${pkgname}"
 version = "${pkgver}"
 description = "${pkgdesc}"
+
+[tool.hatch.build.targets.wheel]
+include = [
+    'ubos/'
+]
 EOF
 }
 
